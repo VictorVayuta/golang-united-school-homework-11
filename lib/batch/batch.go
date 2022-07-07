@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"context"
+	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
 )
@@ -17,26 +19,29 @@ func getOne(id int64) user {
 func getBatch(n int64, pool int64) (res []user) {
 	res = make([]user, n)
 
-	const paralel = 10
+	eg, _ := errgroup.WithContext(context.Background())
+	eg.SetLimit(int(pool))
 
-	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var i int64
 
-	sem := make(chan struct{}, paralel)
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			sem <- struct{}{}
-			getOne(pool)
-			<-sem
-			wg.Done()
-		}()
+	for i = 0; i < n; i++ {
+		id := i
+
+		eg.Go(func() error {
+			user := getOne(id)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			res[id] = user
+
+			return nil
+		})
 	}
 
-	wg.Wait()
+	if err := eg.Wait(); err != nil {
+		return nil
+	}
 	return res
 }
-
-//func work() {
-//	time.Sleep(1 * time.Second)
-//	fmt.Println("Work is done")
-//}
